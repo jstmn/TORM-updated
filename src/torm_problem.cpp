@@ -82,6 +82,7 @@ namespace torm {
         return co;
     }
 
+    // PARSES TARGET POSE FILES
     void TormProblem::setPlanningPath(){
         std::string str;
         std::string path = ros::package::getPath("torm");
@@ -111,6 +112,10 @@ namespace torm {
         end_effector_pose.p.data[2] = start_pose_[2];
 
         end_effector_pose.M = end_effector_pose.M.RPY(start_pose_[3], start_pose_[4], start_pose_[5]);
+
+        std::cout << "Starting pose xyz: " << start_pose_[0] << ", " << start_pose_[1] << ", " << start_pose_[2] << std::endl;
+        std::cout << "              rpy: " << start_pose_[3] << ", " << start_pose_[4] << ", " << start_pose_[5] << std::endl;
+
 
         uint num_motion = input_poss.size();
         for (uint i = 0; i < num_motion; i++){

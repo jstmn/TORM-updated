@@ -9,7 +9,7 @@
 #include <torm/torm_trajectory.h>
 
 // MoveIt!
-#include <moveit/robot_model_loader/robot_model_loader.h>
+#include <moveit/robot_model_loader/robot_model_loader.h> 
 #include <moveit/planning_interface/planning_interface.h>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit_msgs/AttachedCollisionObject.h>
@@ -26,7 +26,10 @@ void initParameters(torm::TormParameters &params_, int endPose_size){
      * These parameters can be edited according to the robot and other factors.
      * Also, these were set with a focus on the arm of the Fetch.
      * */
-    params_.planning_time_limit_ = 50.0;
+    // params_.planning_time_limit_ = 10.0;
+    // params_.planning_time_limit_ = 2.0;
+    // params_.planning_time_limit_ = 50.0;
+    params_.planning_time_limit_ = 30.0;
     params_.smoothness_cost_weight_ = 15.0/endPose_size;
     params_.endPose_cost_weight_ = 10.0;
     params_.obstacle_cost_weight_ = 6.0;
@@ -150,6 +153,12 @@ int main(int argc, char** argv) {
             return 0;
         }
     }
+
+    std::cout << "Visualizing 'q_c' with visualizeRobotState()" << std::endl;
+    debug.visualizeRobotState(q_c, indices);
+
+    // std::cout << "visualizing start config with visualizeConfiguration()" << std::endl;
+    // debug.visualizeConfiguration(indices, s_conf);
 
     // generate trajectory
     torm::TormTrajectory trajectory(planning_scene->getRobotModel(), int(targetPoses.size()), params.time_duration_, PLANNING_GROUP);

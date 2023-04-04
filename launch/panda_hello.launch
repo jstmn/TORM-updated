@@ -1,0 +1,5 @@
+<launch>
+    <group ns="torm">
+        <rosparam file="$(find torm)/src/data/problem/panda_hello.yaml" />
+    </group>
+</launch>

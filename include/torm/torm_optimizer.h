@@ -53,6 +53,7 @@
 #include <kdl/chainiksolverpos_nr_jl.hpp>
 #include <trac_ik/trac_ik.hpp>
 #include <random>
+#include <utility>
 
 namespace torm
 {
@@ -213,6 +214,8 @@ namespace torm
         void getNewTrajectory();
         double getEndPoseCost(bool grad);
         double getEndPoseCost(int start, int end);
+        void printTrajectoryEvaluation(const Eigen::MatrixXd& trajectory, double cost);
+        std::pair<double, double> meanEndPosePositionalAndRotationalError(const Eigen::MatrixXd& trajectory) const;
         void fillInLinearInterpolation(int s, int g);
         double getCollisionCost(int start, int end);
         double getCollisionCostWithWorst(int start, int end);

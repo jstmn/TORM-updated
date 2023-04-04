@@ -7,6 +7,8 @@
 #include <sensor_msgs/JointState.h>
 #include <visualization_msgs/Marker.h>
 #include <moveit_msgs/DisplayTrajectory.h>
+#include <moveit_msgs/DisplayRobotState.h>
+#include <moveit_msgs/RobotState.h>
 #include <moveit_msgs/PlanningScene.h>
 #include <moveit/planning_scene/planning_scene.h>
 
@@ -24,6 +26,8 @@ namespace torm
         void visualizeConfiguration(std::vector<std::string> &indices, std::vector<double> &conf);
         void visualizeTrajectory(std::vector<std::string> &indices, std::vector<std::vector<double> > traj);
         void visualizeEndEffectorPose_line(geometry_msgs::Point p1, geometry_msgs::Point p2, int color);
+        void visualizeRobotState(const KDL::JntArray & q, const std::vector<std::string> &joint_names);
+
         void publishEndEffectorPose_line();
     private:
         int num_joints_;
@@ -33,9 +37,11 @@ namespace torm
         ros::Publisher joint_pub_;
         ros::Publisher display_pub_;
         ros::Publisher marker_pub_;
+        ros::Publisher robot_state_pub_;
 
         moveit_msgs::DisplayTrajectory display_trajectory_;
         moveit_msgs::RobotTrajectory robot_traj_;
+        moveit_msgs::DisplayRobotState robot_state_;
 
         planning_scene::PlanningSceneConstPtr planning_scene_;
 

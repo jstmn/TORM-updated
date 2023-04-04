@@ -42,6 +42,30 @@
 #include <moveit/robot_state/conversions.h>
 #include <moveit/planning_scene/planning_scene.h>
 #include <eigen3/Eigen/Core>
+#include <math.h>
+
+// From https://stackoverflow.com/a/52432897/5191069
+inline double getAbsoluteDiff2Angles(const double x, const double y){
+    // c can be PI (for radians) or 180.0 (for degrees);
+    return M_PI - fabs(fmod(fabs(x - y), 2*M_PI) - M_PI);
+}
+
+double maximumJointAngleChange(const Eigen::MatrixXd& trajectory) {
+
+    double max_diff = 0.0;
+    int ndofs = trajectory.cols();
+    int nrows = trajectory.cols();
+    for (int i = 0; i <= nrows - 1; i++) {
+        for (int j = 0; j < ndofs; j++) {
+            double diff = getAbsoluteDiff2Angles(trajectory(i, j), trajectory(i+1, j));
+            if (diff > max_diff) {
+                max_diff = diff;
+            }
+        }
+    }
+    return max_diff;
+}
+
 
 namespace torm
 {
@@ -348,6 +372,16 @@ namespace torm
         }
     }
 
+    void TormOptimizer::printTrajectoryEvaluation(const Eigen::MatrixXd& trajectory, double cost){
+        auto [ave_l2_error, ave_rotational_error_rad] = meanEndPosePositionalAndRotationalError(trajectory);
+        auto max_joint_angle_change = maximumJointAngleChange(trajectory);
+        auto time_elapsed = (ros::WallTime::now() - start_time_).toSec();
+
+        // Printout matches the format of the header from adaptiveExploration()/iterativeExploration()
+        std::cout << time_elapsed << "\t| " << 100*ave_l2_error << "\t| " << 180.0 / M_PI * ave_rotational_error_rad;
+        std::cout << "\t| " << 180.0 / M_PI * max_joint_angle_change << "\t| " <<  cost << std::endl;
+    }
+
     bool TormOptimizer::localOptimizeTSGDforAdaptive(int maxiter){
         bool optimization_result = false;
         double eCost;
@@ -405,8 +439,12 @@ namespace torm
                         if(feasible && checkSingularity()){
                             optimization_result = true;
                             best_trajectory_backup_cost_ = eCost;
-                            best_trajectory_ = group_trajectory_.getTrajectory();
-                            std::cout << eCost/value_for_endPoses_costs_ << " " << (ros::WallTime::now() - start_time_).toSec() << std::endl;
+                            best_trajectory_ = group_trajectory_.getTrajectory(); // [ 563 x 7 ] for 'hello' problem
+                            auto cost = eCost/value_for_endPoses_costs_;
+
+                            // Printout results
+                            printTrajectoryEvaluation(best_trajectory_, cost);
+                            // std::cout << eCost/value_for_endPoses_costs_ << " " << (ros::WallTime::now() - start_time_).toSec() << std::endl;
                         }
                     }
 
@@ -422,7 +460,11 @@ namespace torm
                             optimization_result = true;
                             best_trajectory_backup_cost_ = eCost;
                             best_trajectory_ = group_trajectory_.getTrajectory();
-                            std::cout << eCost/value_for_endPoses_costs_ << " " << (ros::WallTime::now() - start_time_).toSec() << std::endl;
+                            auto cost = eCost/value_for_endPoses_costs_;
+
+                            // Printout results
+                            printTrajectoryEvaluation(best_trajectory_, cost);
+                            // std::cout << eCost/value_for_endPoses_costs_ << " " << (ros::WallTime::now() - start_time_).toSec() << std::endl;
                         }
                     }
                     calculateEndPoseIncrements();
@@ -492,6 +534,7 @@ namespace torm
 
         double min_v = parameters_->obstacle_cost_weight_-1.0;
         double max_v = parameters_->obstacle_cost_weight_+1.0;
+        std::cout << "\nTime Elapsed (s) \t| Mean. L2 Error (cm) \t| Mean Rotational Error (deg) \t| Max Joint Angle Change (deg) \t| Cost" <<  std::endl;
         while((ros::WallTime::now() - start_time_).toSec() < parameters_->planning_time_limit_){
             double f = (double)rand() / RAND_MAX;
             parameters_->obstacle_cost_weight_ = min_v + f * (max_v - min_v);
@@ -520,6 +563,7 @@ namespace torm
 
         double min_v = parameters_->obstacle_cost_weight_-2.0;
         double max_v = parameters_->obstacle_cost_weight_+2.0;
+        std::cout << "\nTime Elapsed (s) \t| Mean. L2 Error (cm) \t| Mean Rotational Error (deg) \t| Max Joint Angle Change (deg) \t| Cost" <<  std::endl;
         while((ros::WallTime::now() - start_time_).toSec() < parameters_->planning_time_limit_){
             double f = (double)rand() / RAND_MAX;
             parameters_->obstacle_cost_weight_ = min_v + f * (max_v - min_v);
@@ -1067,6 +1111,63 @@ namespace torm
 
         return parameters_->endPose_cost_weight_ * endPose_cost;
     }
+
+    std::pair<double, double> TormOptimizer::meanEndPosePositionalAndRotationalError(const Eigen::MatrixXd& trajectory) const {
+
+        double total_l2_error = 0.0;
+        double total_rotational_error_rad = 0.0;
+        int counter = 0;
+
+        KDL::JntArray robot_configuration(num_joints_);
+        KDL::Frame end_effector_pose;
+        KDL::Twist end_effector_pose_error;
+
+        uint vv = free_vars_start_-1;
+        for (int i = free_vars_start_; i <= free_vars_end_; i++) {
+
+            robot_configuration.data = trajectory.row(i);
+            iksolver_.fkSolver(robot_configuration, end_effector_pose);
+            KDL::Frame target_pose_i = endPoses_desired_[i-vv];
+
+            // L2 error
+            total_l2_error += std::sqrt(
+                std::pow(end_effector_pose.p.x() - target_pose_i.p.x(), 2) +
+                std::pow(end_effector_pose.p.y() - target_pose_i.p.y(), 2) +
+                std::pow(end_effector_pose.p.z() - target_pose_i.p.z(), 2)
+            );
+
+            // Get the rotations as quaternions
+            double q_target_x;
+            double q_target_y;
+            double q_target_z;
+            double q_target_w;
+            target_pose_i.M.GetQuaternion(q_target_x, q_target_y, q_target_z, q_target_w);
+            double q_robot_x;
+            double q_robot_y;
+            double q_robot_z;
+            double q_robot_w;
+            end_effector_pose.M.GetQuaternion(q_robot_x, q_robot_y, q_robot_z, q_robot_w);
+
+            // From https://math.stackexchange.com/a/90098/427284
+            // theta = arccos( 2*<q1, q2>^2 - 1 )
+            //  -> <q1, q2> = q1.x*q2.x + q1.y*q2.y + q1.z*q2.z + q1.w*q2.w
+            double quaternion_difference_norm = q_target_x*q_robot_x + q_target_y*q_robot_y + q_target_z*q_robot_z + q_target_w*q_robot_w;
+            double acos_input = 2*std::pow(quaternion_difference_norm, 2) - 1;
+            double rotational_error_rad;
+            // Floating point math can result in `acos_input` being slightly outside of [-1, 1]. For example: 1.000000000000001
+            if ((acos_input < -1.0) || (1.0 < acos_input)) {
+                rotational_error_rad = 0.0;
+            } else{
+                rotational_error_rad = 2*std::acos(acos_input);
+            }
+
+            total_rotational_error_rad += rotational_error_rad;
+            counter++;
+        }
+        return std::make_pair(total_l2_error / static_cast<double>(counter), total_rotational_error_rad / static_cast<double>(counter));
+    }
+
+
     double TormOptimizer::getEndPoseCost(int start, int end) {
         double endPose_cost = 0.0;
 

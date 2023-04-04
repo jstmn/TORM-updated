@@ -42,10 +42,15 @@ namespace torm
         collision_request_.verbose = false;
     }
 
+    // Returns true if 'values' is collision free.
+    // true  -> not in collision
+    // false -> in collision
     bool TormIKSolver::collisionChecking(std::vector<double> values) {
         collision_result_.clear();
         robot_state::RobotState state = planning_scene_->getCurrentState();
         state.setJointGroupPositions(planning_group_, values);
+
+        // checkCollision() Check whether the current state is in collision. true -> in collision
         planning_scene_->checkCollision(collision_request_, collision_result_, state);
 
         return !collision_result_.collision;
