@@ -63,6 +63,8 @@ namespace torm {
     }
 
     void TormDebug::visualizeTrajectory(std::vector<std::string> &indices, std::vector<std::vector<double> > traj) {
+
+        std::cout << "visualizeTrajectory() | visualizing trajectory" << std::endl;
         display_trajectory_.trajectory.clear();
 
         robot_traj_.joint_trajectory.joint_names = indices;
@@ -108,10 +110,12 @@ namespace torm {
 
         line_list_.points.push_back(p2);
         line_list_.colors.push_back(lineColor);
+        std::cout << "appending to line_list. new length: " << line_list_.colors.size() << " ";
     }
 
     void TormDebug::publishEndEffectorPose_line(){
-        for(uint i = 0; i < 10; i++){
+        std::cout << "publishEndEffectorPose_line() | publishing line_list. len(line_list_): " << line_list_.points.size() << std::endl;
+        for(uint i = 0; i < 5; i++){
             marker_pub_.publish(line_list_);
         }
     }

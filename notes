@@ -1,0 +1,65 @@
+fetch_description - from https://github.com/ZebraDevs/fetch_ros
+
+roslaunch moveit_setup_assistant setup_assistant.launch # once
+
+
+# ----------
+# Fetch
+roscore
+rosparam load /home/jstm/ros/torm_workspace/src/fetch_ros/fetch_description/robots/fetch.urdf robot_description
+roslaunch move_it_config_fetch move_group.launch
+
+
+# ----------
+# Fetch full v2
+roscore
+rosparam load /home/jstm/ros/torm_workspace/src/fetch_ros/fetch_description/robots/fetch.urdf robot_description
+roslaunch move_it_config_fetch_full move_group.launch
+
+
+# ----------
+# Panda
+roscore
+# rosrun xacro xacro /home/jstm/ros/torm_workspace/src/panda_gazebo_moveit/panda_description/panda_description/urdf/panda_arm_hand.urdf.xacro > /home/jstm/ros/torm_workspace/src/panda_gazebo_moveit/panda_description/panda_description/urdf/panda_arm_hand_generated.urdf
+# rosrun xacro xacro /opt/ros/noetic/share/franka_description/robots/panda/panda.urdf.xacro > /home/jstm/ros/torm_workspace/src/panda.urdf
+rosparam load "/home/jstm/ros/torm_workspace/urdfs/panda_arm_hand_formatted.urdf" robot_description
+roslaunch panda_homegrown_w_panda_hand move_group.launch
+
+
+
+# ----------
+# Run torm 
+
+# fetch_full
+roslaunch torm fetch-full_s.launch
+roslaunch torm fetch-full_square.launch
+roslaunch torm fetch-full_hello.launch
+roslaunch torm fetch-full_rotation.launch
+roslaunch torm fetch-full_circle.launch
+
+
+# fetch
+roslaunch torm fetch_hello.launch
+roslaunch torm fetch_s.launch
+roslaunch torm fetch_square.launch
+roslaunch torm fetch_rotation.launch
+roslaunch torm fetch_circle.launch
+
+# panda
+roslaunch torm panda_easy-square.launch
+roslaunch torm panda_square.launch
+roslaunch torm panda_s.launch
+
+
+catkin_make && rosrun torm main
+rosrun torm main && rosrun torm main && rosrun torm main && rosrun torm main && rosrun torm main
+
+
+
+# rviz
+rosrun rviz rviz -d /home/jstm/ros/torm_workspace/rviz_config.rviz
+
+# gdb
+catkin_make -DCMAKE_BUILD_TYPE=Debug
+catkin config --cmake-args -DCMAKE_BUILD_TYPE=Debug
+rosrun --prefix 'gdb -ex run --args' torm main

@@ -215,7 +215,7 @@ namespace torm
         double getEndPoseCost(bool grad);
         double getEndPoseCost(int start, int end);
         void printTrajectoryEvaluation(const Eigen::MatrixXd& trajectory, double cost);
-        std::pair<double, double> meanEndPosePositionalAndRotationalError(const Eigen::MatrixXd& trajectory) const;
+        std::pair<double, double> maxEndPosePositionalAndRotationalError(const Eigen::MatrixXd& trajectory) const;
         void fillInLinearInterpolation(int s, int g);
         double getCollisionCost(int start, int end);
         double getCollisionCostWithWorst(int start, int end);

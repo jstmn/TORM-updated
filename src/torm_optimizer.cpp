@@ -43,6 +43,7 @@
 #include <moveit/planning_scene/planning_scene.h>
 #include <eigen3/Eigen/Core>
 #include <math.h>
+#include <algorithm>
 
 // From https://stackoverflow.com/a/52432897/5191069
 inline double getAbsoluteDiff2Angles(const double x, const double y){
@@ -50,20 +51,31 @@ inline double getAbsoluteDiff2Angles(const double x, const double y){
     return M_PI - fabs(fmod(fabs(x - y), 2*M_PI) - M_PI);
 }
 
-double maximumJointAngleChange(const Eigen::MatrixXd& trajectory) {
+std::pair<double, double> maximumJointAngleChange(const Eigen::MatrixXd& trajectory) {
 
-    double max_diff = 0.0;
+    double max_diff_rad = 0.0;
+    double max_diff_m = 0.0;
     int ndofs = trajectory.cols();
     int nrows = trajectory.cols();
+
+    // This function assumes the robots first joint is prismatic if ndofs=8 
     for (int i = 0; i <= nrows - 1; i++) {
-        for (int j = 0; j < ndofs; j++) {
-            double diff = getAbsoluteDiff2Angles(trajectory(i, j), trajectory(i+1, j));
-            if (diff > max_diff) {
-                max_diff = diff;
+
+        if (ndofs == 7){
+            for (int j = 0; j < ndofs; j++) {
+                double diff = getAbsoluteDiff2Angles(trajectory(i, j), trajectory(i+1, j));
+                max_diff_rad = std::max(max_diff_rad, diff);
             }
+        } else {
+            for (int j = 1; j < ndofs; j++) {
+                double diff = getAbsoluteDiff2Angles(trajectory(i, j), trajectory(i+1, j));
+                max_diff_rad = std::max(max_diff_rad, diff);
+            }
+            auto prismatic_diff  = fabs(trajectory(i+1, 0) - trajectory(i, 0));
+            max_diff_m = std::max(prismatic_diff, max_diff_m);
         }
     }
-    return max_diff;
+    return std::make_pair(max_diff_rad, max_diff_m);
 }
 
 
@@ -373,13 +385,15 @@ namespace torm
     }
 
     void TormOptimizer::printTrajectoryEvaluation(const Eigen::MatrixXd& trajectory, double cost){
-        auto [ave_l2_error, ave_rotational_error_rad] = meanEndPosePositionalAndRotationalError(trajectory);
-        auto max_joint_angle_change = maximumJointAngleChange(trajectory);
+        auto [max_l2_error, max_rotational_error_rad] = maxEndPosePositionalAndRotationalError(trajectory);
+        // mjac_rad: 'maximum joint angle change' in radians, for the revolute joints
+        // mjac_m:   'maximum joint angle change' in meters, for the prismatic joints
+        auto [mjac_rad, mjac_m] = maximumJointAngleChange(trajectory);
         auto time_elapsed = (ros::WallTime::now() - start_time_).toSec();
 
         // Printout matches the format of the header from adaptiveExploration()/iterativeExploration()
-        std::cout << time_elapsed << "\t| " << 100*ave_l2_error << "\t| " << 180.0 / M_PI * ave_rotational_error_rad;
-        std::cout << "\t| " << 180.0 / M_PI * max_joint_angle_change << "\t| " <<  cost << std::endl;
+        std::cout << time_elapsed << "\t| " << 1000*max_l2_error << "\t| " << 180.0 / M_PI * max_rotational_error_rad;
+        std::cout << "\t| " << 180.0 / M_PI * mjac_rad << "\t| " << 100.0 * mjac_m << "\t| " <<  cost << std::endl;
     }
 
     bool TormOptimizer::localOptimizeTSGDforAdaptive(int maxiter){
@@ -534,7 +548,7 @@ namespace torm
 
         double min_v = parameters_->obstacle_cost_weight_-1.0;
         double max_v = parameters_->obstacle_cost_weight_+1.0;
-        std::cout << "\nTime Elapsed (s) \t| Mean. L2 Error (cm) \t| Mean Rotational Error (deg) \t| Max Joint Angle Change (deg) \t| Cost" <<  std::endl;
+        std::cout << "\nTime Elapsed (s) \t| Max. Pos Error (mm) \t| Max Rot Error (deg) \t| Mjac (deg) \t| Mjac (cm) \t| Cost" <<  std::endl;
         while((ros::WallTime::now() - start_time_).toSec() < parameters_->planning_time_limit_){
             double f = (double)rand() / RAND_MAX;
             parameters_->obstacle_cost_weight_ = min_v + f * (max_v - min_v);
@@ -563,7 +577,7 @@ namespace torm
 
         double min_v = parameters_->obstacle_cost_weight_-2.0;
         double max_v = parameters_->obstacle_cost_weight_+2.0;
-        std::cout << "\nTime Elapsed (s) \t| Mean. L2 Error (cm) \t| Mean Rotational Error (deg) \t| Max Joint Angle Change (deg) \t| Cost" <<  std::endl;
+        std::cout << "\nTime Elapsed (s) \t| Max. Pos Error (mm) \t| Max Rot Error (deg) \t| Mjac (deg) \t| Mjac (cm) \t| Cost" <<  std::endl;
         while((ros::WallTime::now() - start_time_).toSec() < parameters_->planning_time_limit_){
             double f = (double)rand() / RAND_MAX;
             parameters_->obstacle_cost_weight_ = min_v + f * (max_v - min_v);
@@ -1112,10 +1126,10 @@ namespace torm
         return parameters_->endPose_cost_weight_ * endPose_cost;
     }
 
-    std::pair<double, double> TormOptimizer::meanEndPosePositionalAndRotationalError(const Eigen::MatrixXd& trajectory) const {
+    std::pair<double, double> TormOptimizer::maxEndPosePositionalAndRotationalError(const Eigen::MatrixXd& trajectory) const {
 
-        double total_l2_error = 0.0;
-        double total_rotational_error_rad = 0.0;
+        double max_l2_error = 0.0;
+        double max_rotational_error_rad = 0.0;
         int counter = 0;
 
         KDL::JntArray robot_configuration(num_joints_);
@@ -1130,11 +1144,12 @@ namespace torm
             KDL::Frame target_pose_i = endPoses_desired_[i-vv];
 
             // L2 error
-            total_l2_error += std::sqrt(
+            double l2_error = std::sqrt(
                 std::pow(end_effector_pose.p.x() - target_pose_i.p.x(), 2) +
                 std::pow(end_effector_pose.p.y() - target_pose_i.p.y(), 2) +
                 std::pow(end_effector_pose.p.z() - target_pose_i.p.z(), 2)
             );
+            max_l2_error = std::max(l2_error, max_l2_error);
 
             // Get the rotations as quaternions
             double q_target_x;
@@ -1160,11 +1175,11 @@ namespace torm
             } else{
                 rotational_error_rad = 2*std::acos(acos_input);
             }
+            max_rotational_error_rad = std::max(rotational_error_rad, max_rotational_error_rad);
 
-            total_rotational_error_rad += rotational_error_rad;
             counter++;
         }
-        return std::make_pair(total_l2_error / static_cast<double>(counter), total_rotational_error_rad / static_cast<double>(counter));
+        return std::make_pair(max_l2_error, max_rotational_error_rad);
     }
 
 
